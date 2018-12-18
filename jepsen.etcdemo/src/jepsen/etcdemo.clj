@@ -3,12 +3,15 @@
             [clojure.string :as str]
             [verschlimmbesserung.core :as v]
             [slingshot.slingshot :refer [try+]]
+            [knossos.model :as model]
             [jepsen [cli :as cli]
+                    [checker :as checker]
                     [client :as client]
                     [control :as ctrl]
                     [db :as db]
                     [tests :as tests]
                     [generator :as gen]]
+            [jepsen.checker.timeline :as timeline]
             [jepsen.control.util :as cu]
             [jepsen.os.debian :as debian]))
 
@@ -61,7 +64,7 @@
 
   (invoke! [this test op]
     (case (:f op)
-      :read (assoc op :type :ok, :value (v/get conn "foo"))
+      :read (assoc op :type :ok, :value (parse-long (v/get conn "foo")))
       :write (do (v/reset! conn "foo" (:value op))
                  (assoc op :type :ok))
       :cas (try+
@@ -122,6 +125,11 @@
           :os debian/os
           :db (db "v3.1.5")
           :client (Client. nil)
+          :model (model/cas-register)
+          :checker (checker/compose
+                     {:linear (checker/linearizable)
+                      :perf (checker/perf)
+                      :timeline (timeline/html)})
           :generator (->> (gen/mix [r w cas])
                           (gen/stagger 1)
                           (gen/nemesis nil)
