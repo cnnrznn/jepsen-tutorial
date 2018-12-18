@@ -44,6 +44,12 @@
        (str node "=" (peer-url node))))
        (str/join ",")))
 
+(defn parse-long
+  "Parses a string to a long. It's pure, so it doesn't
+   do anything a-long the way :)"
+  [s]
+  (when s (Long/parseLong s)))
+
 (defrecord Client [conn]
   client/Client
   (open! [this test node]
@@ -52,7 +58,15 @@
 
   (setup! [this test])
 
-  (invoke! [_ test op])
+  (invoke! [this test op]
+    (case (:f op)
+      :read (assoc op :type :ok, :value (v/get conn "foo"))
+      :write (do (v/reset! conn "foo" (:value op))
+                 (assoc op :type :ok))
+      :cas (let [[old new] (:value op)]
+             (assoc op :type (if (v/cas! conn "foo" old new)
+                               :ok
+                               :fail)))))
 
   (teardown! [this test])
 
@@ -88,7 +102,11 @@
     (teardown! [_ test node]
       (info node "tearing down etcd")
       (cu/stop-daemon! binary pidfile)
-      (ctrl/su (ctrl/exec :rm :-rf dir)))))
+      (ctrl/su (ctrl/exec :rm :-rf dir)))
+
+    db/LogFiles
+    (log-files [_ test node]
+      [logfile])))
 
 (defn etcd-test
   "Given an options map from the command line runner (e.g. :nodes, :ssh,
@@ -100,7 +118,7 @@
           :os debian/os
           :db (db "v3.1.5")
           :client (Client. nil)
-          :generator (->> r
+          :generator (->> (gen/mix [r w cas])
                           (gen/stagger 1)
                           (gen/nemesis nil)
                           (gen/time-limit 15))}))
