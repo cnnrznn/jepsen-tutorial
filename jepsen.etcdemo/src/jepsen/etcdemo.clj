@@ -1,10 +1,13 @@
 (ns jepsen.etcdemo
   (:require [clojure.tools.logging :refer :all]
             [clojure.string :as str]
+            [verschlimmbesserung.core :as v]
             [jepsen [cli :as cli]
+                    [client :as client]
                     [control :as ctrl]
                     [db :as db]
-                    [tests :as tests]]
+                    [tests :as tests]
+                    [generator :as gen]]
             [jepsen.control.util :as cu]
             [jepsen.os.debian :as debian]))
 
@@ -12,6 +15,10 @@
 (def binary "etcd")
 (def logfile (str dir "/etcd.log"))
 (def pidfile (str dir "/etcd.pid"))
+
+(defn r   [_ _] {:type :invoke, :f :read, :value nil})
+(defn w   [_ _] {:type :invoke, :f :write, :value (rand-int 5)})
+(defn cas [_ _] {:type :invoke, :f :cas, :value [(rand-int 5) (rand-int 5)]})
 
 (defn node-url
   "An HTTP url for connecting to a node on a particular port."
@@ -36,6 +43,20 @@
        (map (fn [node]
        (str node "=" (peer-url node))))
        (str/join ",")))
+
+(defrecord Client [conn]
+  client/Client
+  (open! [this test node]
+    (assoc this :conn (v/connect (client-url node)
+                                 {:timeout 5000})))
+
+  (setup! [this test])
+
+  (invoke! [_ test op])
+
+  (teardown! [this test])
+
+  (close! [_ test]))
 
 (defn db
   "Etcd DB for a particular version."
@@ -77,7 +98,12 @@
          opts
          {:name "etcd"
           :os debian/os
-          :db (db "v3.1.5")}))
+          :db (db "v3.1.5")
+          :client (Client. nil)
+          :generator (->> r
+                          (gen/stagger 1)
+                          (gen/nemesis nil)
+                          (gen/time-limit 15))}))
 
 (defn -main
   "A very good place to start."
