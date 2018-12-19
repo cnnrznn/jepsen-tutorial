@@ -65,7 +65,10 @@
 
   (invoke! [this test op]
     (case (:f op)
-      :read (assoc op :type :ok, :value (parse-long (v/get conn "foo")))
+      :read (let [value (-> conn
+                            (v/get "foo" {:quorum? true})
+                            parse-long)]
+              (assoc op :type :ok, :value value))
       :write (do (v/reset! conn "foo" (:value op))
                  (assoc op :type :ok))
       :cas (try+
@@ -133,13 +136,13 @@
                       :perf (checker/perf)
                       :timeline (timeline/html)})
           :generator (->> (gen/mix [r w cas])
-                          (gen/stagger 1)
+                          (gen/stagger 1/10)
                           (gen/nemesis
                             (gen/seq (cycle [(gen/sleep 5)
                                              {:type :info, :f :start}
                                              (gen/sleep 5)
                                              {:type :info, :f :stop}])))
-                          (gen/time-limit 30))}))
+                          (gen/time-limit (:time-limit opts)))}))
 
 (defn -main
   "A very good place to start."
