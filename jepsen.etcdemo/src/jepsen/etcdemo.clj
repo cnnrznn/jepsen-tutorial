@@ -10,6 +10,7 @@
                     [control :as ctrl]
                     [db :as db]
                     [tests :as tests]
+                    [nemesis :as nemesis]
                     [generator :as gen]]
             [jepsen.checker.timeline :as timeline]
             [jepsen.control.util :as cu]
@@ -126,14 +127,19 @@
           :db (db "v3.1.5")
           :client (Client. nil)
           :model (model/cas-register)
+          :nemesis (nemesis/partition-random-halves)
           :checker (checker/compose
                      {:linear (checker/linearizable)
                       :perf (checker/perf)
                       :timeline (timeline/html)})
           :generator (->> (gen/mix [r w cas])
                           (gen/stagger 1)
-                          (gen/nemesis nil)
-                          (gen/time-limit 15))}))
+                          (gen/nemesis
+                            (gen/seq (cycle [(gen/sleep 5)
+                                             {:type :info, :f :start}
+                                             (gen/sleep 5)
+                                             {:type :info, :f :stop}])))
+                          (gen/time-limit 30))}))
 
 (defn -main
   "A very good place to start."
